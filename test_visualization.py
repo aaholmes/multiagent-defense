@@ -77,13 +77,13 @@ def create_multi_scenario_visualization():
     protected_radius = 1.5
     
     # Common intruder position
-    intruder_pos = Point(6, 0)
+    intruder_pos = Point(16, 0)
     
     # Different defender positions and speed ratios (all defenders slower than intruder)
     scenarios = [
-        {"pos": Point(-4, 2), "speed": 0.5, "label": "Slow Defender (k=0.5)"},
-        {"pos": Point(-3, -3), "speed": 0.7, "label": "Medium Defender (k=0.7)"},  
-        {"pos": Point(-2, 4), "speed": 0.9, "label": "Fast Defender (k=0.9)"},
+        {"pos": Point(4, 2), "speed": 0.2, "label": "Slow Defender (k=0.2)"},
+        {"pos": Point(3, -3), "speed": 0.4, "label": "Medium Defender (k=0.4)"},  
+        {"pos": Point(2, 4), "speed": 0.6, "label": "Fast Defender (k=0.6)"},
     ]
     
     viz = SimulationVisualizer(figsize=(12, 10))
@@ -123,7 +123,7 @@ def create_multi_scenario_visualization():
                 fill=True
             )
     
-    viz.set_bounds(-15, 15, -12, 12)
+    viz.set_bounds(-5, 25, -12, 12)
     viz.set_title("Multi-Agent Defense: Apollonian Circles for Different Speed Ratios")
     viz.add_legend()
     
