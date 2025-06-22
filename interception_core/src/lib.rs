@@ -3,10 +3,12 @@ use pyo3::prelude::*;
 mod structs;
 mod geometry;
 mod controller;
+mod pathfinding;
 
 use structs::*;
 use geometry::*;
 use controller::*;
+use pathfinding::*;
 
 /// Python module exports
 #[pymodule]
@@ -18,6 +20,9 @@ fn interception_core(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<WorldState>()?;
     m.add_class::<SimConfig>()?;
     m.add_class::<ControlState>()?;
+    m.add_class::<GridConfig>()?;
+    m.add_class::<GridNode>()?;
+    m.add_class::<PathResult>()?;
     
     // Export geometry functions
     m.add_function(wrap_pyfunction!(py_calculate_apollonian_circle, m)?)?;
@@ -28,6 +33,13 @@ fn interception_core(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_get_defender_velocity_commands, m)?)?;
     m.add_function(wrap_pyfunction!(py_get_defender_velocity_commands_with_states, m)?)?;
     m.add_function(wrap_pyfunction!(py_calculate_line_segment_circle_intersection, m)?)?;
+    
+    // Export pathfinding functions
+    m.add_function(wrap_pyfunction!(py_calculate_intruder_next_position, m)?)?;
+    m.add_function(wrap_pyfunction!(py_calculate_intruder_full_path, m)?)?;
+    m.add_function(wrap_pyfunction!(py_generate_threat_map, m)?)?;
+    m.add_function(wrap_pyfunction!(py_to_grid_coords, m)?)?;
+    m.add_function(wrap_pyfunction!(py_to_world_coords, m)?)?;
     
     Ok(())
 }
@@ -84,6 +96,48 @@ fn py_calculate_line_segment_circle_intersection(
     circle: &Circle,
 ) -> Option<Point> {
     calculate_line_segment_circle_intersection(p1, p2, circle)
+}
+
+/// Python wrapper for calculate_intruder_next_position
+#[pyfunction]
+fn py_calculate_intruder_next_position(
+    world_state: &WorldState,
+    grid_config: &GridConfig,
+    sim_config: &SimConfig,
+) -> Option<Point> {
+    calculate_intruder_next_position(world_state, grid_config, sim_config)
+}
+
+/// Python wrapper for calculate_intruder_full_path
+#[pyfunction]
+fn py_calculate_intruder_full_path(
+    world_state: &WorldState,
+    grid_config: &GridConfig,
+    sim_config: &SimConfig,
+) -> PathResult {
+    calculate_intruder_full_path(world_state, grid_config, sim_config)
+}
+
+/// Python wrapper for generate_threat_map
+#[pyfunction]
+fn py_generate_threat_map(
+    world_state: &WorldState,
+    grid_config: &GridConfig,
+    sim_config: &SimConfig,
+) -> Vec<Vec<f64>> {
+    generate_threat_map(world_state, grid_config, sim_config)
+}
+
+/// Python wrapper for to_grid_coords
+#[pyfunction]
+fn py_to_grid_coords(world_pos: &Point, config: &GridConfig) -> Option<GridNode> {
+    to_grid_coords(world_pos, config)
+}
+
+/// Python wrapper for to_world_coords
+#[pyfunction]
+fn py_to_world_coords(node: &GridNode, config: &GridConfig) -> Point {
+    to_world_coords(node, config)
 }
 
 #[cfg(test)]

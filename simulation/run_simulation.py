@@ -43,6 +43,7 @@ except ImportError:
 
 import config
 from visualizer import SimulationVisualizer
+from smart_intruder import SmartIntruder
 
 class SimulationResult:
     """Stores the result of a simulation run"""
@@ -73,6 +74,22 @@ class DefenseSimulation:
         
         # Initialize defender states for three-state FSM
         self.defender_states = [ic.ControlState.Travel for _ in range(len(self.world_state.defenders))]
+        
+        # Initialize grid configuration for pathfinding
+        self.grid_config = ic.GridConfig(
+            width=80,
+            height=80,
+            world_bounds=(-config.WORLD_SIZE, config.WORLD_SIZE, -config.WORLD_SIZE, config.WORLD_SIZE),
+            base_cost=1.0,
+            threat_penalty=1000.0
+        )
+        
+        # Initialize smart intruder AI
+        self.smart_intruder = SmartIntruder(
+            initial_position=self.world_state.intruder.position,
+            max_speed=config.INTRUDER_SPEED,
+            grid_config=self.grid_config
+        )
         
         # Initialize visualizer
         if self.visualization_enabled:
@@ -120,36 +137,25 @@ class DefenseSimulation:
         return ic.WorldState(defenders, intruder, protected_zone)
     
     def _update_intruder(self, dt: float):
-        """Update intruder position - moves straight toward protected zone center"""
-        # Simple strategy: intruder moves directly toward goal
-        goal_x, goal_y = config.PROTECTED_ZONE_CENTER
-        current_x = self.world_state.intruder.position.x
-        current_y = self.world_state.intruder.position.y
+        """Update intruder position using smart AI pathfinding"""
+        # Update smart intruder AI (this calculates new velocity based on A* pathfinding)
+        self.smart_intruder.update(self.world_state, self.sim_config)
         
-        # Calculate direction to goal
-        dx = goal_x - current_x
-        dy = goal_y - current_y
-        distance = math.sqrt(dx*dx + dy*dy)
+        # Move the smart intruder
+        self.smart_intruder.move(dt)
         
-        if distance > 0:
-            # Normalize direction and scale by speed
-            vel_x = (dx / distance) * config.INTRUDER_SPEED
-            vel_y = (dy / distance) * config.INTRUDER_SPEED
-            
-            # Create new intruder state
-            new_x = current_x + vel_x * dt
-            new_y = current_y + vel_y * dt
-            new_intruder = ic.AgentState(
-                position=ic.Point(new_x, new_y),
-                velocity=ic.Point(vel_x, vel_y)
-            )
-            
-            # Create new world state with updated intruder
-            self.world_state = ic.WorldState(
-                self.world_state.defenders,
-                new_intruder,
-                self.world_state.protected_zone
-            )
+        # Update world state with new intruder position and velocity
+        new_intruder = ic.AgentState(
+            position=self.smart_intruder.position,
+            velocity=self.smart_intruder.velocity
+        )
+        
+        # Create new world state with updated intruder
+        self.world_state = ic.WorldState(
+            self.world_state.defenders,
+            new_intruder,
+            self.world_state.protected_zone
+        )
     
     def _update_defenders(self, dt: float):
         """Update defender positions using Rust controller with three-state FSM"""
@@ -251,13 +257,36 @@ class DefenseSimulation:
         # Plot intruder
         self.visualizer.plot_intruder(self.world_state.intruder.position)
         
+        # Plot A* path if available
+        try:
+            path_result = self.smart_intruder.get_current_path(self.world_state, self.sim_config)
+            if path_result.found and len(path_result.path) > 1:
+                # Convert path to world coordinates
+                path_x = []
+                path_y = []
+                for node in path_result.path[:min(20, len(path_result.path))]:  # Limit to first 20 steps for clarity
+                    world_pos = ic.py_to_world_coords(node, self.grid_config)
+                    path_x.append(world_pos.x)
+                    path_y.append(world_pos.y)
+                
+                # Plot path
+                if len(path_x) > 1:
+                    self.visualizer.ax.plot(path_x, path_y, 'g--', alpha=0.6, linewidth=2, label='A* Path')
+        except Exception as e:
+            # Don't let path visualization errors break the simulation
+            pass
+        
         # Plot defenders and their Apollonian circles
         for i, defender in enumerate(self.world_state.defenders):
             color = config.COLORS['defenders'][i % len(config.COLORS['defenders'])]
             
-            # Plot defender
+            # Get defender state for color coding
+            defender_state = self.defender_states[i] if i < len(self.defender_states) else ic.ControlState.Travel
+            
+            # Plot defender with state-based coloring
             self.visualizer.plot_defender(
                 defender.position, 
+                state=defender_state,
                 label=f"Defender {i+1}"
             )
             
@@ -340,13 +369,14 @@ class DefenseSimulation:
                 print(f"Simulation completed in {time.time() - start_time:.2f} real seconds")
                 return result
             
-            # Visualize every few steps (to avoid too many frames)
-            if self.timestep % 5 == 0:  # Visualize every 5th timestep
+            # Visualize every frame for smooth A* demonstration
+            if self.timestep % 2 == 0:  # Visualize every 2nd timestep for smoother animation
                 self._visualize_current_state(save_frame=config.SAVE_FRAMES)
                 
                 # Print progress
-                intruder_dist = self.world_state.intruder.position.distance_to(ic.Point(*config.PROTECTED_ZONE_CENTER))
-                print(f"t={self.time_elapsed:.1f}s: Intruder distance = {intruder_dist:.2f}")
+                if self.timestep % 10 == 0:  # Print progress less frequently
+                    intruder_dist = self.world_state.intruder.position.distance_to(ic.Point(*config.PROTECTED_ZONE_CENTER))
+                    print(f"t={self.time_elapsed:.1f}s: Intruder distance = {intruder_dist:.2f}")
         
         # Simulation ended without decisive result
         final_distance = self.world_state.intruder.position.distance_to(ic.Point(*config.PROTECTED_ZONE_CENTER))

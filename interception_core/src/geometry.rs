@@ -1,4 +1,4 @@
-use crate::structs::{Point, Circle};
+use crate::structs::{Point, Circle, GridConfig, GridNode};
 use std::f64::consts::PI;
 
 /// Calculate the Apollonian circle for a defender and intruder.
@@ -211,6 +211,48 @@ pub fn calculate_line_segment_circle_intersection(
     // Return the intersection closest to p1 (smallest t value)
     valid_intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     Some(valid_intersections[0].1.clone())
+}
+
+/// Convert world coordinates to grid coordinates
+pub fn to_grid_coords(world_pos: &Point, config: &GridConfig) -> Option<GridNode> {
+    let (min_x, max_x, min_y, max_y) = config.world_bounds;
+    
+    // Check if point is within world bounds
+    if world_pos.x < min_x || world_pos.x > max_x || world_pos.y < min_y || world_pos.y > max_y {
+        return None;
+    }
+    
+    // Map world coordinates to grid coordinates
+    let normalized_x = (world_pos.x - min_x) / (max_x - min_x);
+    let normalized_y = (world_pos.y - min_y) / (max_y - min_y);
+    
+    let col = (normalized_x * config.width as f64).floor() as usize;
+    let row = (normalized_y * config.height as f64).floor() as usize;
+    
+    // Clamp to valid grid bounds
+    let col = col.min(config.width - 1);
+    let row = row.min(config.height - 1);
+    
+    Some(GridNode::new(row, col))
+}
+
+/// Convert grid coordinates to world coordinates (center of grid cell)
+pub fn to_world_coords(node: &GridNode, config: &GridConfig) -> Point {
+    let (min_x, max_x, min_y, max_y) = config.world_bounds;
+    
+    let cell_width = (max_x - min_x) / config.width as f64;
+    let cell_height = (max_y - min_y) / config.height as f64;
+    
+    // Calculate center of the grid cell
+    let x = min_x + (node.col as f64 + 0.5) * cell_width;
+    let y = min_y + (node.row as f64 + 0.5) * cell_height;
+    
+    Point::new(x, y)
+}
+
+/// Check if grid position is valid
+pub fn is_valid_grid_position(row: usize, col: usize, config: &GridConfig) -> bool {
+    row < config.height && col < config.width
 }
 
 #[cfg(test)]

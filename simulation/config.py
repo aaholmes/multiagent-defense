@@ -25,12 +25,12 @@ EPSILON = 0.3  # overlap tolerance threshold
 # Initial Positions  
 DEFENDER_INITIAL_RADIUS = 6.0  # average distance of defenders from center (for reference)
 INTRUDER_INITIAL_DISTANCE = 25.0  # initial distance of intruder from center
-INTRUDER_INITIAL_ANGLE = 0.0  # initial angle of intruder (0 = positive x-axis)
+INTRUDER_INITIAL_ANGLE = 0.785398  # initial angle of intruder (45 degrees northeast for better lattice demonstration)
 
 # Visualization Parameters
 VISUALIZATION_ENABLED = True
-SAVE_FRAMES = False  # set to True to save individual frames
-FRAME_DIRECTORY = "simulation_frames"
+SAVE_FRAMES = True  # set to True to save individual frames for GIF creation
+FRAME_DIRECTORY = "animation_frames"
 SHOW_APOLLONIAN_CIRCLES = True
 SHOW_VELOCITY_VECTORS = True
 APOLLONIAN_ALPHA = 0.15  # transparency of Apollonian circles

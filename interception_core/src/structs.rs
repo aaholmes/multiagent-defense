@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 use std::f64::consts::PI;
+use std::hash::{Hash, Hasher};
 
 #[pyclass]
 #[derive(Clone, Debug)]
@@ -235,6 +236,89 @@ impl Arc {
             end - start
         } else {
             0.0
+        }
+    }
+}
+
+// Grid-related structures for A* pathfinding
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct GridConfig {
+    #[pyo3(get, set)]
+    pub width: usize,
+    #[pyo3(get, set)]
+    pub height: usize,
+    #[pyo3(get, set)]
+    pub world_bounds: (f64, f64, f64, f64), // (min_x, max_x, min_y, max_y)
+    #[pyo3(get, set)]
+    pub base_cost: f64,
+    #[pyo3(get, set)]
+    pub threat_penalty: f64,
+}
+
+#[pymethods]
+impl GridConfig {
+    #[new]
+    pub fn new(
+        width: usize,
+        height: usize,
+        world_bounds: (f64, f64, f64, f64),
+        base_cost: f64,
+        threat_penalty: f64,
+    ) -> Self {
+        GridConfig {
+            width,
+            height,
+            world_bounds,
+            base_cost,
+            threat_penalty,
+        }
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GridNode {
+    #[pyo3(get, set)]
+    pub row: usize,
+    #[pyo3(get, set)]
+    pub col: usize,
+}
+
+#[pymethods]
+impl GridNode {
+    #[new]
+    pub fn new(row: usize, col: usize) -> Self {
+        GridNode { row, col }
+    }
+}
+
+impl Hash for GridNode {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.row.hash(state);
+        self.col.hash(state);
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct PathResult {
+    #[pyo3(get, set)]
+    pub path: Vec<GridNode>,
+    #[pyo3(get, set)]
+    pub total_cost: f64,
+    #[pyo3(get, set)]
+    pub found: bool,
+}
+
+#[pymethods]
+impl PathResult {
+    #[new]
+    pub fn new(path: Vec<GridNode>, total_cost: f64, found: bool) -> Self {
+        PathResult {
+            path,
+            total_cost,
+            found,
         }
     }
 }
