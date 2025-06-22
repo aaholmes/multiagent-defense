@@ -1,90 +1,120 @@
 # Project: Decentralized Dynamic Interception
 
-Goal: Implement a multi-robot system where N defenders (speed s_d) prevent a single intruder (speed s_is_d) from reaching a circular protected zone. The solution must be decentralized and implemented as a Rust/Python hybrid project.
+Goal: Evolve the controller to allow defenders to break formation and commit to a direct interception of the intruder once a capture is guaranteed.
 
-System Architecture: Hybrid Rust/Python Model
+System Architecture: The existing Hybrid Rust/Python architecture remains unchanged. The following modifications apply to the Rust Core Library (interception_core).
 
-Rust Core Library (interception_core): A compiled library containing all performance-critical state management, geometric calculations, and control logic.
-Python Simulation Layer: A Python package that imports the Rust library to initialize, run, and visualize simulations.
-1. Rust Core Library (interception_core)
-Crate: interception_core
-Dependencies: pyo3 (for Python bindings), numpy (for sharing data efficiently).
+1. The Three-State Control FSM
+Each defender's controller will now operate as a Finite State Machine with three possible states. The ControlState enum in Rust should be updated:
 
-Data Structures (src/structs.rs)
 Rust
 
-// Exposed to Python via PyO3
-#[pyclass]
-#[derive(Clone)]
-pub struct Point { x: f64, y: f64 }
-
-#[pyclass]
-#[derive(Clone)]
-pub struct AgentState { pub position: Point, pub velocity: Point }
-
-#[pyclass]
-#[derive(Clone)]
-pub struct Circle { pub center: Point, pub radius: f64 }
-
-#[pyclass]
-#[derive(Clone)]
-pub struct WorldState {
-    pub defenders: Vec<AgentState>,
-    pub intruder: AgentState,
-    pub protected_zone: Circle,
+// src/structs.rs
+pub enum ControlState {
+    Travel, // Robot is too far to help; moving towards the objective.
+    Engage, // Robot is in range; cooperating to form the defensive barrier.
+    Intercept, // Robot has a guaranteed capture; breaking formation to intercept.
 }
+State Transitions:
+Here is the logic governing the transitions between states for a single defender:
 
-// Internal (not exposed to Python)
-pub struct Arc { pub start_angle: f64, pub end_angle: f64 }
-pub enum ControlState { Travel, Engage }
-Core Logic (src/lib.rs)
-The main function exposed to Python will be get_defender_velocity_commands, which orchestrates the calls below.
+Travel -> Engage
 
-determine_control_state(defender_circle: &Circle, protected_zone: &Circle) -> ControlState
+Trigger: When the robot's Apollonian circle (Apollon_i) first intersects the protected_zone.
+Meaning: "I'm close enough to help form the barrier."
+Engage -> Intercept
 
-Checks if the defender's Apollonian circle intersects the protected zone.
-Returns ControlState::Engage if they intersect, otherwise ControlState::Travel.
-calculate_loss_engage(world_state: &WorldState, defender_index: usize) -> f64
+Trigger: When the intruder's intended path (a line segment from its current position to the center of the protected_zone) intersects Apollon_i.
+Meaning: "I have a guaranteed capture. Committing now."
+Intercept -> Engage (or other states)
 
-Calculates all coverage arcs g_i and overlap arcs h_ij.
-Returns Loss = w_repel * sum(max(0, h_ij - ε)) - g_i.
-calculate_loss_travel(defender_state: &AgentState, protected_zone: &Circle) -> f64
+For this design, the Intercept state is terminal. Once a robot commits, it will continue to pursue the calculated interception point until a simulation reset. This simplifies the initial implementation and represents a full commitment to the capture.
+2. Rust Core Library (interception_core) Modifications
+New Geometric Utility (src/geometry.rs)
+We need a robust function to detect the intersection between the intruder's path and the Apollonian circle.
 
-Calculates the squared distance from the defender to the perimeter of the protected zone.
-Returns Loss = w_travel * distance^2.
-calculate_gradient(loss_fn: F, world_state: &WorldState, defender_index: usize) -> Point
+calculate_line_segment_circle_intersection(p1: Point, p2: Point, circle: &Circle) -> Option<Point>
+This function takes the start and end points of a line segment (the intruder's path) and a circle (the Apollonian circle).
+It should solve for the intersection points mathematically.
+Crucially, it must check if the intersection points lie on the segment between p1 and p2.
+It returns the closest valid intersection point to the intruder (p1) if one exists, otherwise None. This point becomes the interception_point.
+Updated Core Logic (src/lib.rs)
+The main get_defender_velocity_commands function must be updated to implement the FSM. This requires tracking the current state for each defender.
 
-A generic function that takes a loss function (F) as input.
-Numerically calculates the gradient of the given loss function with respect to the defender's position using finite differences.
-Returns the 2D gradient vector.
-get_defender_velocity_commands(world_state: &WorldState, config: &SimConfig) -> Vec<Point>
+Rust
 
-This is the main entry point called from Python.
-It iterates through each defender i: a. Calculates the defender's Apollonian circle. b. Calls determine_control_state to get the current state (Travel or Engage). c. Based on the state, selects the appropriate loss function (calculate_loss_engage or calculate_loss_travel). d. Calls calculate_gradient with the selected loss function to get the gradient grad. e. Calculates the final velocity command: vel = -config.learning_rate * grad. f. Clamps the velocity to the maximum defender speed.
-Returns a Vec<Point> of velocity commands for all defenders.
-Python Bindings (using #[pymodule])
-Expose the Point, AgentState, Circle, and WorldState structs.
-Expose the main function get_defender_velocity_commands.
-2. Python Simulation Layer
-Dependencies: matplotlib, numpy, interception_core (the compiled Rust wheel).
+// A simplified sketch of the new main loop logic
+pub fn get_defender_velocity_commands(
+    world_state: &WorldState,
+    defender_states: &mut Vec<ControlState>, // Pass states in as mutable
+    config: &SimConfig
+) -> Vec<Point> {
 
-Structure:
+    let mut velocity_commands = Vec::new();
 
-simulation/run_simulation.py: The main script for running a simulation.
-simulation/config.py: Defines simulation parameters (number of agents, speeds, learning rate, world size).
-simulation/visualizer.py: A class Visualizer that uses Matplotlib to draw the world state.
-Main Loop Logic in run_simulation.py
-Initialization:
+    // 1. Calculate the intruder's path
+    let intruder_path_start = world_state.intruder.position;
+    let intruder_path_end = world_state.protected_zone.center;
 
-Load parameters from config.py.
-Create an initial WorldState object (e.g., defenders in a semi-circle, intruder at the edge).
-Instantiate the Visualizer.
-Simulation Loop (runs for T timesteps):
-a. Call the single, efficient Rust core function to get all velocity commands at once:
-velocity_commands = interception_core.get_defender_velocity_commands(current_world_state, config)
-b. Update defender states in Python:
-for i, vel in enumerate(velocity_commands): defenders[i].position += vel * dt
-c. Update Intruder State: Move intruder along its path.
-d. Check for End Conditions (intruder reached goal, etc.).
-e. Visualize: Call the Visualizer to draw the new WorldState, including the semi-transparent Apollonian circles for each defender.
-f. Repeat.
+    for i in 0..world_state.defenders.len() {
+        let defender = &world_state.defenders[i];
+        let apollon_circle = get_apollonian_circle(...);
+
+        // 2. FSM State Transition Logic
+        match defender_states[i] {
+            ControlState::Travel => {
+                if intersects(&apollon_circle, &world_state.protected_zone) {
+                    defender_states[i] = ControlState::Engage;
+                }
+            },
+            ControlState::Engage => {
+                if let Some(_) = calculate_line_segment_circle_intersection(
+                    intruder_path_start,
+                    intruder_path_end,
+                    &apollon_circle
+                ) {
+                    defender_states[i] = ControlState::Intercept;
+                }
+            },
+            ControlState::Intercept => {
+                // This is a terminal state, no transitions out.
+            }
+        }
+
+        // 3. Action Logic (Calculate velocity based on current state)
+        let vel_command = match defender_states[i] {
+            ControlState::Travel => {
+                // Calculate gradient of Loss_Travel and return velocity
+                // ... (existing logic)
+            },
+            ControlState::Engage => {
+                // Calculate gradient of Loss_Engage and return velocity
+                // ... (existing logic)
+            },
+            ControlState::Intercept => {
+                // New Interception Logic!
+                // Recalculate the interception point this frame for accuracy.
+                let target_point = calculate_line_segment_circle_intersection(...).unwrap();
+                let direction_vector = target_point - defender.position;
+                // Command robot to move at max speed towards the target.
+                normalize(direction_vector) * config.defender_max_speed
+            }
+        };
+        velocity_commands.push(vel_command);
+    }
+
+    velocity_commands
+}
+3. Python Simulation Layer Modifications
+The Python layer needs a minor change to track and visualize the state of each defender.
+
+run_simulation.py:
+
+Initialize and maintain a list of defender states: defender_states = [interception_core.ControlState.Travel] * num_defenders.
+Pass this list to the get_defender_velocity_commands function in each step of the simulation loop.
+visualizer.py:
+
+When drawing each defender, use its current state to determine its color. This is critical for debugging and for making the demo visually clear.
+Travel state: GREY (not yet a factor)
+Engage state: BLUE (cooperatively defending)
+Intercept state: RED (committed to attack)
