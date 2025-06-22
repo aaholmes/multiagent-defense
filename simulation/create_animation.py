@@ -180,9 +180,10 @@ class AnimationSimulation(DefenseSimulation):
             defender_color = config.COLORS['defenders'][i % len(config.COLORS['defenders'])]
             apollonian_color = config.COLORS['apollonian'][i % len(config.COLORS['apollonian'])]
             
-            # Plot defender
+            # Plot defender with state-based coloring
             self.visualizer.plot_defender(
                 defender.position,
+                state=self.defender_states[i] if i < len(self.defender_states) else None,
                 label="Defenders" if i == 0 else None  # Only label first defender for legend
             )
             

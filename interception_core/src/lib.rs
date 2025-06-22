@@ -17,14 +17,17 @@ fn interception_core(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<AgentState>()?;
     m.add_class::<WorldState>()?;
     m.add_class::<SimConfig>()?;
+    m.add_class::<ControlState>()?;
     
     // Export geometry functions
     m.add_function(wrap_pyfunction!(py_calculate_apollonian_circle, m)?)?;
     m.add_function(wrap_pyfunction!(py_calculate_arc_intersection_length, m)?)?;
     m.add_function(wrap_pyfunction!(py_circle_intersection_points, m)?)?;
     
-    // Export main controller function
+    // Export controller functions
     m.add_function(wrap_pyfunction!(py_get_defender_velocity_commands, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_defender_velocity_commands_with_states, m)?)?;
+    m.add_function(wrap_pyfunction!(py_calculate_line_segment_circle_intersection, m)?)?;
     
     Ok(())
 }
@@ -51,13 +54,36 @@ fn py_circle_intersection_points(circle1: &Circle, circle2: &Circle) -> Vec<Poin
     circle_intersection_points(circle1, circle2)
 }
 
-/// Python wrapper for get_defender_velocity_commands
+/// Python wrapper for get_defender_velocity_commands (legacy)
 #[pyfunction]
 fn py_get_defender_velocity_commands(
     world_state: &WorldState,
     config: &SimConfig,
 ) -> Vec<Point> {
     get_defender_velocity_commands(world_state, config)
+}
+
+/// Python wrapper for get_defender_velocity_commands_with_states
+/// Returns both velocities and updated states
+#[pyfunction]
+fn py_get_defender_velocity_commands_with_states(
+    world_state: &WorldState,
+    defender_states: Vec<ControlState>,
+    config: &SimConfig,
+) -> (Vec<Point>, Vec<ControlState>) {
+    let mut states = defender_states;
+    let velocities = get_defender_velocity_commands_with_states(world_state, &mut states, config);
+    (velocities, states)
+}
+
+/// Python wrapper for calculate_line_segment_circle_intersection
+#[pyfunction]
+fn py_calculate_line_segment_circle_intersection(
+    p1: &Point,
+    p2: &Point,
+    circle: &Circle,
+) -> Option<Point> {
+    calculate_line_segment_circle_intersection(p1, p2, circle)
 }
 
 #[cfg(test)]

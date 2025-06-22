@@ -71,6 +71,9 @@ class DefenseSimulation:
         # Initialize world state
         self.world_state = self._create_initial_world_state()
         
+        # Initialize defender states for three-state FSM
+        self.defender_states = [ic.ControlState.Travel for _ in range(len(self.world_state.defenders))]
+        
         # Initialize visualizer
         if self.visualization_enabled:
             self.visualizer = SimulationVisualizer(figsize=(12, 10))
@@ -149,12 +152,16 @@ class DefenseSimulation:
             )
     
     def _update_defenders(self, dt: float):
-        """Update defender positions using Rust controller"""
-        # Get velocity commands from Rust controller
-        velocity_commands = ic.py_get_defender_velocity_commands(
+        """Update defender positions using Rust controller with three-state FSM"""
+        # Get velocity commands and updated states from Rust controller
+        velocity_commands, updated_states = ic.py_get_defender_velocity_commands_with_states(
             self.world_state, 
+            self.defender_states,
             self.sim_config
         )
+        
+        # Update stored defender states
+        self.defender_states = updated_states
         
         # Create updated defenders
         updated_defenders = []

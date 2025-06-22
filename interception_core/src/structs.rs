@@ -199,11 +199,13 @@ impl SimConfig {
     }
 }
 
-// Internal enums (not exposed to Python)
+// Control states for defender FSM - now exposed to Python
+#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ControlState {
     Travel,
     Engage,
+    Intercept,
 }
 
 #[derive(Debug, Clone)]

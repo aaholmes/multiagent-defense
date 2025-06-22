@@ -1,13 +1,40 @@
 use crate::structs::{Point, Circle, AgentState, WorldState, SimConfig, ControlState, Arc};
-use crate::geometry::{calculate_apollonian_circle, calculate_arc_intersection_length, circle_intersection_points};
+use crate::geometry::{calculate_apollonian_circle, calculate_arc_intersection_length, circle_intersection_points, calculate_line_segment_circle_intersection};
 use std::f64::consts::PI;
 
-/// Determine whether a defender should be in Travel or Engage state
-pub fn determine_control_state(apollonian_circle: &Circle, protected_zone: &Circle) -> ControlState {
-    if apollonian_circle.intersects(protected_zone) {
-        ControlState::Engage
-    } else {
-        ControlState::Travel
+/// Determine next control state based on current state and conditions
+pub fn determine_next_control_state(
+    current_state: &ControlState,
+    apollonian_circle: &Circle,
+    protected_zone: &Circle,
+    intruder_pos: &Point,
+    protected_center: &Point,
+) -> ControlState {
+    match current_state {
+        ControlState::Travel => {
+            // Travel -> Engage: When Apollonian circle intersects protected zone
+            if apollonian_circle.intersects(protected_zone) {
+                ControlState::Engage
+            } else {
+                ControlState::Travel
+            }
+        },
+        ControlState::Engage => {
+            // Engage -> Intercept: When intruder's path intersects Apollonian circle
+            if let Some(_) = calculate_line_segment_circle_intersection(
+                intruder_pos,
+                protected_center,
+                apollonian_circle
+            ) {
+                ControlState::Intercept
+            } else {
+                ControlState::Engage
+            }
+        },
+        ControlState::Intercept => {
+            // Intercept is terminal - no transitions out
+            ControlState::Intercept
+        }
     }
 }
 
@@ -170,6 +197,38 @@ pub fn calculate_engage_velocity(
     clamp_velocity(&velocity, config.defender_speed)
 }
 
+/// Calculate velocity for Intercept state - move directly toward interception point
+pub fn calculate_intercept_velocity(
+    defender_pos: &Point,
+    apollonian_circle: &Circle,
+    intruder_pos: &Point,
+    protected_center: &Point,
+    max_speed: f64,
+) -> Point {
+    // Recalculate interception point for accuracy
+    if let Some(target_point) = calculate_line_segment_circle_intersection(
+        intruder_pos,
+        protected_center,
+        apollonian_circle
+    ) {
+        // Direction vector from defender to interception point
+        let direction = Point::new(
+            target_point.x - defender_pos.x,
+            target_point.y - defender_pos.y,
+        );
+        
+        // Move at max speed toward the target
+        let normalized = direction.normalize();
+        Point::new(
+            normalized.x * max_speed,
+            normalized.y * max_speed,
+        )
+    } else {
+        // Fallback: if no intersection found, stop moving
+        Point::new(0.0, 0.0)
+    }
+}
+
 /// Clamp velocity to maximum speed while preserving direction
 pub fn clamp_velocity(velocity: &Point, max_speed: f64) -> Point {
     let current_speed = velocity.magnitude();
@@ -185,11 +244,18 @@ pub fn clamp_velocity(velocity: &Point, max_speed: f64) -> Point {
 }
 
 /// Main controller function - calculates velocity commands for all defenders
-pub fn get_defender_velocity_commands(
+/// Now supports three-state FSM with state persistence
+pub fn get_defender_velocity_commands_with_states(
     world_state: &WorldState,
+    defender_states: &mut Vec<ControlState>,
     config: &SimConfig,
 ) -> Vec<Point> {
     let mut velocity_commands = Vec::new();
+    
+    // Ensure we have enough states for all defenders
+    while defender_states.len() < world_state.defenders.len() {
+        defender_states.push(ControlState::Travel);
+    }
     
     for (i, defender) in world_state.defenders.iter().enumerate() {
         // Calculate Apollonian circle for this defender
@@ -199,23 +265,45 @@ pub fn get_defender_velocity_commands(
             config.speed_ratio(),
         );
         
-        // Determine control state
-        let control_state = determine_control_state(&apollonian_circle, &world_state.protected_zone);
+        // Update state based on FSM transitions
+        defender_states[i] = determine_next_control_state(
+            &defender_states[i],
+            &apollonian_circle,
+            &world_state.protected_zone,
+            &world_state.intruder.position,
+            &world_state.protected_zone.center,
+        );
         
-        // Calculate velocity based on state
-        let velocity = match control_state {
+        // Calculate velocity based on current state
+        let velocity = match defender_states[i] {
             ControlState::Travel => calculate_travel_velocity(
                 &apollonian_circle.center,
                 &world_state.protected_zone.center,
                 config.defender_speed,
             ),
             ControlState::Engage => calculate_engage_velocity(world_state, i, config),
+            ControlState::Intercept => calculate_intercept_velocity(
+                &defender.position,
+                &apollonian_circle,
+                &world_state.intruder.position,
+                &world_state.protected_zone.center,
+                config.defender_speed,
+            ),
         };
         
         velocity_commands.push(velocity);
     }
     
     velocity_commands
+}
+
+/// Legacy controller function for backward compatibility
+pub fn get_defender_velocity_commands(
+    world_state: &WorldState,
+    config: &SimConfig,
+) -> Vec<Point> {
+    let mut states = vec![ControlState::Travel; world_state.defenders.len()];
+    get_defender_velocity_commands_with_states(world_state, &mut states, config)
 }
 
 #[cfg(test)]
@@ -239,19 +327,39 @@ mod tests {
     fn test_control_state_determination() {
         let apollonian_circle = Circle::new(Point::new(0.0, 0.0), 3.0);
         let protected_zone = Circle::new(Point::new(2.0, 0.0), 2.0);
+        let intruder_pos = Point::new(10.0, 0.0);
+        let protected_center = Point::new(2.0, 0.0);
         
-        // Circles intersect, should be Engage
-        assert_eq!(
-            determine_control_state(&apollonian_circle, &protected_zone),
-            ControlState::Engage
+        // Test Travel -> Engage transition
+        let next_state = determine_next_control_state(
+            &ControlState::Travel,
+            &apollonian_circle, 
+            &protected_zone,
+            &intruder_pos,
+            &protected_center
         );
+        assert_eq!(next_state, ControlState::Engage);
         
         let far_circle = Circle::new(Point::new(10.0, 0.0), 1.0);
-        // Circles don't intersect, should be Travel
-        assert_eq!(
-            determine_control_state(&far_circle, &protected_zone),
-            ControlState::Travel
+        // Circles don't intersect, should stay Travel
+        let stay_travel = determine_next_control_state(
+            &ControlState::Travel,
+            &far_circle,
+            &protected_zone,
+            &intruder_pos,
+            &protected_center
         );
+        assert_eq!(stay_travel, ControlState::Travel);
+        
+        // Test Intercept state is terminal
+        let stay_intercept = determine_next_control_state(
+            &ControlState::Intercept,
+            &apollonian_circle,
+            &protected_zone,
+            &intruder_pos,
+            &protected_center
+        );
+        assert_eq!(stay_intercept, ControlState::Intercept);
     }
 
     #[test]

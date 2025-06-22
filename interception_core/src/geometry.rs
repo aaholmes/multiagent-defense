@@ -151,6 +151,68 @@ pub fn circle_intersection_points(circle1: &Circle, circle2: &Circle) -> Vec<Poi
     vec![intersection1, intersection2]
 }
 
+/// Calculate intersection between a line segment and a circle.
+/// Returns the closest intersection point to p1 (start of segment) if one exists.
+/// This is used to determine if the intruder's path intersects a defender's Apollonian circle.
+pub fn calculate_line_segment_circle_intersection(
+    p1: &Point,  // Start of line segment (intruder position)
+    p2: &Point,  // End of line segment (protected zone center)
+    circle: &Circle,
+) -> Option<Point> {
+    if circle.radius == f64::INFINITY {
+        return None; // Infinite radius circles don't have meaningful intersections
+    }
+
+    // Vector from p1 to p2
+    let dx = p2.x - p1.x;
+    let dy = p2.y - p1.y;
+    
+    // Vector from p1 to circle center
+    let fx = p1.x - circle.center.x;
+    let fy = p1.y - circle.center.y;
+    
+    // Quadratic equation coefficients for line-circle intersection
+    // (p1 + t*(p2-p1) - center)^2 = radius^2
+    let a = dx * dx + dy * dy;
+    let b = 2.0 * (fx * dx + fy * dy);
+    let c = fx * fx + fy * fy - circle.radius * circle.radius;
+    
+    let discriminant = b * b - 4.0 * a * c;
+    
+    if discriminant < 0.0 {
+        return None; // No intersection
+    }
+    
+    if a.abs() < 1e-10 {
+        return None; // Degenerate case: p1 == p2
+    }
+    
+    let sqrt_discriminant = discriminant.sqrt();
+    let t1 = (-b - sqrt_discriminant) / (2.0 * a);
+    let t2 = (-b + sqrt_discriminant) / (2.0 * a);
+    
+    // Check which intersection points lie on the segment (0 <= t <= 1)
+    let mut valid_intersections = Vec::new();
+    
+    for &t in &[t1, t2] {
+        if t >= 0.0 && t <= 1.0 {
+            let intersection = Point::new(
+                p1.x + t * dx,
+                p1.y + t * dy,
+            );
+            valid_intersections.push((t, intersection));
+        }
+    }
+    
+    if valid_intersections.is_empty() {
+        return None;
+    }
+    
+    // Return the intersection closest to p1 (smallest t value)
+    valid_intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    Some(valid_intersections[0].1.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,5 +251,41 @@ mod tests {
             assert!((circle1.center.distance_to(point) - circle1.radius).abs() < 1e-10);
             assert!((circle2.center.distance_to(point) - circle2.radius).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    fn test_line_segment_circle_intersection() {
+        let circle = Circle::new(Point::new(0.0, 0.0), 2.0);
+        
+        // Test line segment that intersects the circle
+        let p1 = Point::new(-3.0, 0.0);  // Outside circle
+        let p2 = Point::new(3.0, 0.0);   // Outside circle, on opposite side
+        
+        let intersection = calculate_line_segment_circle_intersection(&p1, &p2, &circle);
+        assert!(intersection.is_some());
+        
+        let point = intersection.unwrap();
+        // Should be the closest intersection to p1, which is (-2, 0)
+        assert!((point.x - (-2.0)).abs() < 1e-10);
+        assert!(point.y.abs() < 1e-10);
+        
+        // Test line segment that doesn't intersect
+        let p3 = Point::new(-3.0, 3.0);  // Outside circle
+        let p4 = Point::new(-1.0, 3.0);  // Outside circle, doesn't cross
+        
+        let no_intersection = calculate_line_segment_circle_intersection(&p3, &p4, &circle);
+        assert!(no_intersection.is_none());
+        
+        // Test segment starting inside circle
+        let p5 = Point::new(0.0, 0.0);   // Inside circle (center)
+        let p6 = Point::new(3.0, 0.0);   // Outside circle
+        
+        let intersection2 = calculate_line_segment_circle_intersection(&p5, &p6, &circle);
+        assert!(intersection2.is_some());
+        
+        let point2 = intersection2.unwrap();
+        // Should be at (2, 0) where the line exits the circle
+        assert!((point2.x - 2.0).abs() < 1e-10);
+        assert!(point2.y.abs() < 1e-10);
     }
 }

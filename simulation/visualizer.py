@@ -60,10 +60,27 @@ class SimulationVisualizer:
         )
         self.plot_point(center, color='darkgreen', size=50, marker='*', label='Protected Zone')
         
-    def plot_defender(self, position: Point, label: Optional[str] = None):
-        """Plot a defender robot"""
+    def plot_defender(self, position: Point, state=None, label: Optional[str] = None):
+        """Plot a defender robot with color based on control state"""
+        # Color based on control state as specified in PRD
+        if state is not None:
+            try:
+                import interception_core as ic
+                if state == ic.ControlState.Travel:
+                    color = 'grey'
+                elif state == ic.ControlState.Engage:
+                    color = 'blue'
+                elif state == ic.ControlState.Intercept:
+                    color = 'red'
+                else:
+                    color = 'blue'  # Default fallback
+            except (ImportError, AttributeError):
+                color = 'blue'  # Fallback if states not available
+        else:
+            color = 'blue'  # Default color for backward compatibility
+            
         display_label = label or 'Defender'
-        self.plot_point(position, color='blue', size=150, marker='s', label=display_label)
+        self.plot_point(position, color=color, size=150, marker='s', label=display_label)
         
     def plot_intruder(self, position: Point):
         """Plot the intruder"""
