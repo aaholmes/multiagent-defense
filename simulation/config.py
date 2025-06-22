@@ -14,7 +14,7 @@ PROTECTED_ZONE_RADIUS = 2.0  # radius of protected zone
 
 # Agent Parameters
 NUM_DEFENDERS = 3  # number of defender robots
-DEFENDER_SPEED = 2.0  # maximum speed of defenders
+DEFENDER_SPEED = 3.0  # maximum speed of defenders (balanced for challenging but winnable defense)
 INTRUDER_SPEED = 4.0  # speed of intruder (faster than defenders)
 
 # Control Parameters
@@ -65,23 +65,31 @@ def get_simulation_config():
         return None
 
 def get_initial_defender_positions():
-    """Generate random initial positions for defenders around protected zone"""
+    """Generate defender positions around different sides of the goal circle"""
     import math
     import random
     positions = []
     
-    # Set seed for reproducible random positions
+    # Set seed for reproducible positions
     random.seed(42)
     
-    # Place defenders randomly around the protected zone
-    # Use distances that ensure Apollonian circles partially overlap with goal
+    # Position defenders NNE, SSE, and West of goal (intruder coming from East)
+    # This creates a more challenging and realistic scenario
+    base_angles = [
+        math.pi * 1/6,    # 30 degrees (NNE - North-North-East)
+        math.pi * 11/6,   # 330 degrees (SSE - South-South-East) 
+        math.pi          # 180 degrees (West)
+    ]
+    
     for i in range(NUM_DEFENDERS):
-        # Random angle around the circle
-        angle = random.uniform(0, 2 * math.pi)
+        if i < len(base_angles):
+            angle = base_angles[i]
+        else:
+            # If more than 3 defenders, distribute remaining randomly
+            angle = random.uniform(0, 2 * math.pi)
         
-        # Random distance - positioned for partial Apollonian circle overlap with goal
-        # For speed ratio 0.5, we want partial intersection, not complete coverage
-        distance = random.uniform(12.0, 16.0)  # Optimal positioning for partial overlap
+        # Distance chosen so Apollonian circles partially overlap but don't fully cover goal
+        distance = random.uniform(14.0, 18.0)  # Further distance for partial coverage only
         
         x = distance * math.cos(angle)
         y = distance * math.sin(angle)

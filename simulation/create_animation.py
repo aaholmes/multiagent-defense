@@ -40,12 +40,12 @@ from run_simulation import DefenseSimulation, SimulationResult
 ANIMATION_CONFIG = {
     'timestep': 0.02,  # Smaller timestep for smoother animation
     'max_time': 12.0,   # Longer simulation for larger scenario
-    'frame_rate': 10,  # Save every 10th frame for reasonable file size
+    'frame_rate': 8,   # Save every 8th frame for reasonable file size
     'figure_size': (10, 8),
     'dpi': 100,
     'world_bounds': 20,  # Bounds for scenario with close defenders
     'show_trails': True,  # Add position trails
-    'trail_length': 20,   # Number of trail points
+    'trail_length': 100,  # Long trails to show complete defender paths
 }
 
 class AnimationSimulation(DefenseSimulation):
@@ -117,20 +117,33 @@ class AnimationSimulation(DefenseSimulation):
                     color='red', alpha=alpha, linewidth=2
                 )
         
-        # Plot defender trails
+        # Plot defender trails with enhanced visibility
         defender_colors = config.COLORS['defenders']
         for i, trail in enumerate(self.position_history['defenders']):
-            if len(trail) > 1:
+            if len(trail) > 2:  # Need at least 3 points for a visible trail
                 trail_x = [pos[0] for pos in trail]
                 trail_y = [pos[1] for pos in trail]
                 color = defender_colors[i % len(defender_colors)]
                 
+                # Plot the full trail as a continuous line with varying alpha
                 for j in range(len(trail_x) - 1):
-                    alpha = (j + 1) / len(trail_x) * 0.4
+                    alpha = 0.3 + (j + 1) / len(trail_x) * 0.7  # Minimum 30% opacity, up to 100%
+                    linewidth = 2.0 + (j + 1) / len(trail_x) * 2.0  # Thicker lines (2-4px)
                     self.visualizer.ax.plot(
                         trail_x[j:j+2], trail_y[j:j+2],
-                        color=color, alpha=alpha, linewidth=1.5
+                        color=color, alpha=alpha, linewidth=linewidth
                     )
+                
+                # Add trail markers for better visibility
+                if len(trail) > 5:  # Only add markers if trail is long enough
+                    marker_indices = range(0, len(trail), max(1, len(trail)//8))  # 8 markers max
+                    for idx in marker_indices:
+                        if idx < len(trail):
+                            marker_alpha = (idx + 1) / len(trail) * 0.6
+                            self.visualizer.ax.scatter(
+                                trail_x[idx], trail_y[idx],
+                                color=color, alpha=marker_alpha, s=20, marker='.'
+                            )
     
     def _visualize_animation_frame(self):
         """Create a frame optimized for animation"""
@@ -170,7 +183,7 @@ class AnimationSimulation(DefenseSimulation):
             # Plot defender
             self.visualizer.plot_defender(
                 defender.position,
-                label=f"Defender {i+1}" if self.frame_count == 0 else None
+                label="Defenders" if i == 0 else None  # Only label first defender for legend
             )
             
             # Plot Apollonian circle
@@ -214,9 +227,8 @@ class AnimationSimulation(DefenseSimulation):
             f"Time: {self.time_elapsed:.1f}s | Intruder Distance: {intruder_distance:.1f}"
         )
         
-        # Add legend only for first frame
-        if self.frame_count == 0:
-            self.visualizer.add_legend()
+        # Add legend to all frames
+        self.visualizer.add_legend()
         
         # Save frame
         frame_filename = os.path.join(self.frames_dir, f"frame_{self.frame_count:04d}.png")
