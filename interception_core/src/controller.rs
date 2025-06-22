@@ -2,7 +2,10 @@ use crate::structs::{Point, Circle, AgentState, WorldState, SimConfig, ControlSt
 use crate::geometry::{calculate_apollonian_circle, calculate_arc_intersection_length, circle_intersection_points, calculate_line_segment_circle_intersection};
 use std::f64::consts::PI;
 
-/// Determine next control state based on current state and conditions
+/// Determine control state based on intended strategy priority
+/// 1. Intercept if Apollonian circle intersects intruder's path (highest priority)
+/// 2. Engage if Apollonian circle touches goal circle (use loss function)
+/// 3. Travel if Apollonian circle doesn't touch goal (move circle towards goal)
 pub fn determine_next_control_state(
     current_state: &ControlState,
     apollonian_circle: &Circle,
@@ -10,31 +13,26 @@ pub fn determine_next_control_state(
     intruder_pos: &Point,
     protected_center: &Point,
 ) -> ControlState {
-    match current_state {
-        ControlState::Travel => {
-            // Travel -> Engage: When Apollonian circle intersects protected zone
-            if apollonian_circle.intersects(protected_zone) {
-                ControlState::Engage
-            } else {
-                ControlState::Travel
-            }
-        },
-        ControlState::Engage => {
-            // Engage -> Intercept: When intruder's path intersects Apollonian circle
-            if let Some(_) = calculate_line_segment_circle_intersection(
-                intruder_pos,
-                protected_center,
-                apollonian_circle
-            ) {
-                ControlState::Intercept
-            } else {
-                ControlState::Engage
-            }
-        },
-        ControlState::Intercept => {
-            // Intercept is terminal - no transitions out
-            ControlState::Intercept
-        }
+    // Intercept is terminal - once committed, stay committed
+    if *current_state == ControlState::Intercept {
+        return ControlState::Intercept;
+    }
+    
+    // Priority 1: Check for interception opportunity FIRST (highest priority)
+    if let Some(_) = calculate_line_segment_circle_intersection(
+        intruder_pos,
+        protected_center,
+        apollonian_circle
+    ) {
+        return ControlState::Intercept;
+    }
+    
+    // Priority 2: If Apollonian circle intersects protected zone, use cooperative defense
+    if apollonian_circle.intersects(protected_zone) {
+        ControlState::Engage
+    } else {
+        // Priority 3: Move Apollonian circle towards goal circle
+        ControlState::Travel
     }
 }
 
@@ -325,38 +323,54 @@ mod tests {
 
     #[test]
     fn test_control_state_determination() {
-        let apollonian_circle = Circle::new(Point::new(0.0, 0.0), 3.0);
-        let protected_zone = Circle::new(Point::new(2.0, 0.0), 2.0);
-        let intruder_pos = Point::new(10.0, 0.0);
-        let protected_center = Point::new(2.0, 0.0);
+        let protected_zone = Circle::new(Point::new(0.0, 0.0), 2.0);
+        let protected_center = Point::new(0.0, 0.0);
         
-        // Test Travel -> Engage transition
-        let next_state = determine_next_control_state(
-            &ControlState::Travel,
-            &apollonian_circle, 
+        // Test case 1: Interception opportunity (highest priority)
+        // Line from intruder to goal clearly intersects Apollonian circle
+        let intercepting_circle = Circle::new(Point::new(2.0, 0.0), 3.0);  
+        let intruder_pos = Point::new(6.0, 0.0);  // Intruder on x-axis, line passes through circle
+        
+        let intercept_state = determine_next_control_state(
+            &ControlState::Travel,  // Any current state
+            &intercepting_circle,
             &protected_zone,
             &intruder_pos,
             &protected_center
         );
-        assert_eq!(next_state, ControlState::Engage);
+        assert_eq!(intercept_state, ControlState::Intercept);
         
+        // Test case 2: No interception, circle intersects goal -> Engage
+        let intersecting_circle = Circle::new(Point::new(3.0, 0.0), 2.0);
+        let safe_intruder = Point::new(10.0, 10.0);  // Intruder not on direct path
+        
+        let engage_state = determine_next_control_state(
+            &ControlState::Travel,
+            &intersecting_circle,
+            &protected_zone, 
+            &safe_intruder,
+            &protected_center
+        );
+        assert_eq!(engage_state, ControlState::Engage);
+        
+        // Test case 3: No interception, no goal intersection -> Travel
         let far_circle = Circle::new(Point::new(10.0, 0.0), 1.0);
-        // Circles don't intersect, should stay Travel
-        let stay_travel = determine_next_control_state(
+        
+        let travel_state = determine_next_control_state(
             &ControlState::Travel,
             &far_circle,
             &protected_zone,
-            &intruder_pos,
+            &safe_intruder,
             &protected_center
         );
-        assert_eq!(stay_travel, ControlState::Travel);
+        assert_eq!(travel_state, ControlState::Travel);
         
-        // Test Intercept state is terminal
+        // Test case 4: Intercept state is terminal
         let stay_intercept = determine_next_control_state(
             &ControlState::Intercept,
-            &apollonian_circle,
+            &far_circle,  // Doesn't matter - should stay Intercept
             &protected_zone,
-            &intruder_pos,
+            &safe_intruder,
             &protected_center
         );
         assert_eq!(stay_intercept, ControlState::Intercept);
