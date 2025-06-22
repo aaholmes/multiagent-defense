@@ -1,35 +1,63 @@
 # Project: Decentralized Dynamic Interception
 
-Goal: Evolve the controller to allow defenders to break formation and commit to a direct interception of the intruder once a capture is guaranteed.
+Goal: Implement a multi-robot system where N defenders prevent a smart intruder from reaching a protected zone. This document includes the design for the defenders' three-state interception controller and the intruder's A* planning algorithm.
 
-System Architecture: The existing Hybrid Rust/Python architecture remains unchanged. The following modifications apply to the Rust Core Library (interception_core).
+System Architecture: Hybrid Rust/Python Model
 
-1. The Three-State Control FSM
-Each defender's controller will now operate as a Finite State Machine with three possible states. The ControlState enum in Rust should be updated:
+Rust Core Library (interception_core): A compiled library containing all performance-critical state management, geometric calculations, and defender control logic.
+Python Simulation Layer: A Python package that imports the Rust library to initialize, run, and visualize simulations, and which will contain the new Intruder AI logic.
+1. The Defender Three-State Control FSM (Rust Core)
+Each defender's controller operates as a Finite State Machine with three possible states.
 
-Rust
+ControlState Enum:
 
-// src/structs.rs
-pub enum ControlState {
-    Travel, // Robot is too far to help; moving towards the objective.
-    Engage, // Robot is in range; cooperating to form the defensive barrier.
-    Intercept, // Robot has a guaranteed capture; breaking formation to intercept.
-}
+Travel: Robot is too far; moving towards the objective.
+Engage: Robot is in range; cooperating to form the defensive barrier.
+Intercept: Robot has a guaranteed capture; breaking formation to intercept.
 State Transitions:
-Here is the logic governing the transitions between states for a single defender:
 
-Travel -> Engage
+Travel -> Engage: When the robot's Apollonian circle first intersects the protected_zone.
+Engage -> Intercept: When the intruder's path intersects the robot's Apollonian circle.
+Intercept is a terminal state representing full commitment.
+(The detailed implementation of the defender logic remains as specified in our previous discussion).
 
-Trigger: When the robot's Apollonian circle (Apollon_i) first intersects the protected_zone.
-Meaning: "I'm close enough to help form the barrier."
-Engage -> Intercept
+2. Smart Intruder AI (A* Planner)
+The "smart" intruder will not move in a straight line. Instead, it will use the A* search algorithm to find the safest path to the goal at every time step, reacting to the defenders' movements. This logic will reside in the Python Simulation Layer.
 
-Trigger: When the intruder's intended path (a line segment from its current position to the center of the protected_zone) intersects Apollon_i.
-Meaning: "I have a guaranteed capture. Committing now."
-Intercept -> Engage (or other states)
+2.1. Grid and Discretization
+To use A*, the continuous world must be represented as a discrete grid.
 
-For this design, the Intercept state is terminal. Once a robot commits, it will continue to pursue the calculated interception point until a simulation reset. This simplifies the initial implementation and represents a full commitment to the capture.
-2. Rust Core Library (interception_core) Modifications
+Lattice Type: Square Lattice 
+Connectivity: 4-way (von Neumann neighborhood) 
+Grid Size: A defined resolution, e.g., 100x100 cells.
+Coordinate Mapping: Functions will be needed to map continuous world coordinates (x, y) to discrete grid coordinates (row, col) and back.
+to_grid(world_pos) -> (row, col)
+to_world(row, col) -> world_pos
+2.2. Dynamic Cost Calculation ("Threat Map")
+At the beginning of each simulation step, a new cost map for the grid is generated.
+
+Initialize Costs: Create a 2D array representing the grid, with all cells initialized to a base traversal cost of 1.
+Calculate Threat:
+For each defender in the world_state: a. Calculate its current Apollonian circle. b. Iterate through every cell (row, col) in the grid. c. Convert the cell's (row, col) to its world position (x, y). d. If the point (x, y) is inside the defender's Apollonian circle, add a large THREAT_PENALTY (e.g., 1000.0) to the cost of that cell in the cost map.
+2.3. A Search Implementation*
+A standard A* algorithm implementation will be used.
+
+Heuristic Function: The Manhattan distance is the appropriate heuristic for a 4-way connected grid.
+h(a, b) = |a.row - b.row| + |a.col - b.col|
+Inputs: start_node, goal_node, and the dynamic cost_map generated in the previous step.
+Output: A list of nodes representing the cheapest path from start to goal.
+2.4. Execution and Replanning Loop
+The intruder's update method in Python will perform the following logic at each frame:
+
+Generate the new cost_map based on the current positions of all defenders (as per section 2.2).
+Get the intruder's current grid position start_node = to_grid(intruder.position).
+Get the goal's grid position goal_node = to_grid(protected_zone.center).
+Run the A* search on the cost_map from start_node to goal_node to get the path.
+If a path is found: a. Get the next node in the path: next_node = path[1]. b. Convert this node back to a continuous world position: target_pos = to_world(next_node.row, next_node.col). c. Calculate the velocity vector pointing from the intruder's current position to target_pos. d. Set the intruder's velocity to this vector, clamped to its maximum speed.
+If no path is found (the goal is completely surrounded), the intruder can stop or default to moving towards the closest defender to create an opening.
+This entire process repeats every frame, allowing the intruder to react dynamically to the defenders' changing strategy.
+
+3. Rust Core Library (interception_core) Modifications
 New Geometric Utility (src/geometry.rs)
 We need a robust function to detect the intersection between the intruder's path and the Apollonian circle.
 
@@ -105,7 +133,8 @@ pub fn get_defender_velocity_commands(
 
     velocity_commands
 }
-3. Python Simulation Layer Modifications
+
+4. Python Simulation Layer Modifications
 The Python layer needs a minor change to track and visualize the state of each defender.
 
 run_simulation.py:
