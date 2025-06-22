@@ -39,11 +39,11 @@ from run_simulation import DefenseSimulation, SimulationResult
 # Animation-specific configuration
 ANIMATION_CONFIG = {
     'timestep': 0.02,  # Smaller timestep for smoother animation
-    'max_time': 8.0,   # Shorter simulation for demo
+    'max_time': 12.0,   # Longer simulation for larger scenario
     'frame_rate': 10,  # Save every 10th frame for reasonable file size
     'figure_size': (10, 8),
     'dpi': 100,
-    'world_bounds': 12,  # Tighter bounds for better view
+    'world_bounds': 20,  # Bounds for scenario with close defenders
     'show_trails': True,  # Add position trails
     'trail_length': 20,   # Number of trail points
 }
@@ -164,7 +164,8 @@ class AnimationSimulation(DefenseSimulation):
         
         # Plot defenders and their Apollonian circles
         for i, defender in enumerate(self.world_state.defenders):
-            color = config.COLORS['defenders'][i % len(config.COLORS['defenders'])]
+            defender_color = config.COLORS['defenders'][i % len(config.COLORS['defenders'])]
+            apollonian_color = config.COLORS['apollonian'][i % len(config.COLORS['apollonian'])]
             
             # Plot defender
             self.visualizer.plot_defender(
@@ -182,7 +183,7 @@ class AnimationSimulation(DefenseSimulation):
             if apollonian_circle.radius != float('inf') and apollonian_circle.radius < 50:
                 self.visualizer.plot_circle(
                     apollonian_circle,
-                    color=color,
+                    color=apollonian_color,
                     alpha=0.15,
                     linestyle='--',
                     linewidth=1.5,
@@ -197,7 +198,7 @@ class AnimationSimulation(DefenseSimulation):
                     defender.position.x, defender.position.y,
                     defender_vel.x * scale, defender_vel.y * scale,
                     head_width=0.3, head_length=0.2,
-                    fc=color, ec=color, alpha=0.7, linewidth=1.5
+                    fc=defender_color, ec=defender_color, alpha=0.7, linewidth=1.5
                 )
         
         # Set plot properties

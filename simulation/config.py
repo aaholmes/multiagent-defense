@@ -8,7 +8,7 @@ MAX_SIMULATION_TIME = 30.0  # maximum simulation time in seconds
 MAX_TIMESTEPS = int(MAX_SIMULATION_TIME / TIMESTEP_DURATION)
 
 # World Parameters
-WORLD_SIZE = 20.0  # world extends from -WORLD_SIZE to +WORLD_SIZE
+WORLD_SIZE = 30.0  # world extends from -WORLD_SIZE to +WORLD_SIZE
 PROTECTED_ZONE_CENTER = (0.0, 0.0)  # center of protected zone
 PROTECTED_ZONE_RADIUS = 2.0  # radius of protected zone
 
@@ -22,9 +22,9 @@ LEARNING_RATE = 0.8  # learning rate for gradient descent
 W_REPEL = 2.0  # weight for overlap penalty in loss function
 EPSILON = 0.3  # overlap tolerance threshold
 
-# Initial Positions
-DEFENDER_INITIAL_RADIUS = 8.0  # initial distance of defenders from center
-INTRUDER_INITIAL_DISTANCE = 15.0  # initial distance of intruder from center
+# Initial Positions  
+DEFENDER_INITIAL_RADIUS = 6.0  # average distance of defenders from center (for reference)
+INTRUDER_INITIAL_DISTANCE = 25.0  # initial distance of intruder from center
 INTRUDER_INITIAL_ANGLE = 0.0  # initial angle of intruder (0 = positive x-axis)
 
 # Visualization Parameters
@@ -45,7 +45,7 @@ COLORS = {
     'protected_zone': 'green',
     'intruder': 'red', 
     'defenders': ['blue', 'purple', 'orange', 'brown', 'pink'],
-    'apollonian': ['blue', 'purple', 'orange', 'brown', 'pink'],
+    'apollonian': ['blue', 'blue', 'blue', 'blue', 'blue'],
     'velocity': 'black'
 }
 
@@ -65,16 +65,26 @@ def get_simulation_config():
         return None
 
 def get_initial_defender_positions():
-    """Generate initial positions for defenders in a semi-circle"""
+    """Generate random initial positions for defenders around protected zone"""
     import math
+    import random
     positions = []
     
-    # Place defenders in a semi-circle between intruder and protected zone
+    # Set seed for reproducible random positions
+    random.seed(42)
+    
+    # Place defenders randomly around the protected zone
+    # Use distances that ensure Apollonian circles partially overlap with goal
     for i in range(NUM_DEFENDERS):
-        # Spread defenders from 90 to 270 degrees (left semi-circle)
-        angle = math.pi/2 + i * math.pi / (NUM_DEFENDERS - 1) if NUM_DEFENDERS > 1 else math.pi
-        x = DEFENDER_INITIAL_RADIUS * math.cos(angle)
-        y = DEFENDER_INITIAL_RADIUS * math.sin(angle)
+        # Random angle around the circle
+        angle = random.uniform(0, 2 * math.pi)
+        
+        # Random distance - positioned for partial Apollonian circle overlap with goal
+        # For speed ratio 0.5, we want partial intersection, not complete coverage
+        distance = random.uniform(12.0, 16.0)  # Optimal positioning for partial overlap
+        
+        x = distance * math.cos(angle)
+        y = distance * math.sin(angle)
         positions.append((x, y))
     
     return positions
