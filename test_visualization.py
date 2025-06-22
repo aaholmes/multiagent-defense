@@ -9,11 +9,17 @@ import os
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 
-# Add simulation directory to path
+# Add simulation directory to path  
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'simulation'))
 
-from geometry_pure import Point, Circle, calculate_apollonian_circle
+# Use Rust implementation for geometry
+import interception_core as ic
 from visualizer import SimulationVisualizer
+
+# Alias for compatibility
+Point = ic.Point
+Circle = ic.Circle
+calculate_apollonian_circle = ic.py_calculate_apollonian_circle
 
 
 def test_apollonian_calculations():

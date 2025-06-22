@@ -5,7 +5,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
 from typing import List, Optional
-from geometry_pure import Point, Circle, calculate_apollonian_circle
+try:
+    # Try to use Rust implementation first
+    import interception_core as ic
+    Point = ic.Point
+    Circle = ic.Circle
+    calculate_apollonian_circle = ic.py_calculate_apollonian_circle
+except ImportError:
+    # Fall back to pure Python implementation
+    from geometry_pure import Point, Circle, calculate_apollonian_circle
 
 
 class SimulationVisualizer:

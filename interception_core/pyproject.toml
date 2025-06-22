@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=0.14,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "interception_core"
+version = "0.1.0"
+description = "Multi-agent defense simulation core library"
+requires-python = ">=3.8"
+dependencies = ["numpy"]
+
+[tool.maturin]
+module-name = "interception_core"
