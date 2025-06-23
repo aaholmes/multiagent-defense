@@ -261,13 +261,29 @@ class DefenseSimulation:
         try:
             path_result = self.smart_intruder.get_current_path(self.world_state, self.sim_config)
             if path_result.found and len(path_result.path) > 1:
-                # Convert path to world coordinates
+                # Convert path to world coordinates, stopping at goal circle boundary
                 path_x = []
                 path_y = []
+                goal_center = self.world_state.protected_zone.center
+                goal_radius = self.world_state.protected_zone.radius
+                
                 for node in path_result.path[:min(20, len(path_result.path))]:  # Limit to first 20 steps for clarity
                     world_pos = ic.py_to_world_coords(node, self.grid_config)
-                    path_x.append(world_pos.x)
-                    path_y.append(world_pos.y)
+                    
+                    # Check if this point is inside the goal circle
+                    distance_to_goal = math.sqrt(
+                        (world_pos.x - goal_center.x)**2 + 
+                        (world_pos.y - goal_center.y)**2
+                    )
+                    
+                    if distance_to_goal <= goal_radius:
+                        # This point is inside goal - stop path here
+                        path_x.append(world_pos.x)
+                        path_y.append(world_pos.y)
+                        break
+                    else:
+                        path_x.append(world_pos.x)
+                        path_y.append(world_pos.y)
                 
                 # Plot path
                 if len(path_x) > 1:
