@@ -234,10 +234,12 @@ pub fn calculate_intruder_next_position(
     
     // Convert positions to grid coordinates
     let start_grid = to_grid_coords(&world_state.intruder.position, grid_config)?;
-    let goal_grid = to_grid_coords(&world_state.protected_zone.center, grid_config)?;
     
-    // Run A* pathfinding
-    let path_result = astar_pathfind(&start_grid, &goal_grid, &cost_map, grid_config);
+    // Find the best goal target within the protected zone
+    let goal_target = find_best_goal_target(world_state, grid_config, &cost_map)?;
+    
+    // Run A* pathfinding to the best goal target
+    let path_result = astar_pathfind(&start_grid, &goal_target, &cost_map, grid_config);
     
     if !path_result.found || path_result.path.len() < 2 {
         return None; // No path found or already at goal
@@ -246,6 +248,56 @@ pub fn calculate_intruder_next_position(
     // Return the next step in the path (convert back to world coordinates)
     let next_grid_pos = &path_result.path[1];
     Some(to_world_coords(next_grid_pos, grid_config))
+}
+
+/// Find the best goal target within the protected zone circle
+fn find_best_goal_target(
+    world_state: &WorldState,
+    grid_config: &GridConfig,
+    cost_map: &Vec<Vec<f64>>,
+) -> Option<GridNode> {
+    let protected_zone = &world_state.protected_zone;
+    
+    // If intruder is already in goal zone, return current position
+    if protected_zone.contains_point(&world_state.intruder.position) {
+        return to_grid_coords(&world_state.intruder.position, grid_config);
+    }
+    
+    // Find all grid cells within the protected zone
+    let mut goal_candidates = Vec::new();
+    
+    // Calculate grid bounds around the protected zone
+    let zone_center_grid = to_grid_coords(&protected_zone.center, grid_config)?;
+    let (min_x, max_x, min_y, max_y) = grid_config.world_bounds;
+    let cell_size = ((max_x - min_x) / grid_config.width as f64)
+        .max((max_y - min_y) / grid_config.height as f64);
+    let grid_radius = (protected_zone.radius / cell_size).ceil() as usize + 1;
+    
+    let start_row = zone_center_grid.row.saturating_sub(grid_radius);
+    let end_row = (zone_center_grid.row + grid_radius + 1).min(grid_config.height);
+    let start_col = zone_center_grid.col.saturating_sub(grid_radius);
+    let end_col = (zone_center_grid.col + grid_radius + 1).min(grid_config.width);
+    
+    for row in start_row..end_row {
+        for col in start_col..end_col {
+            let node = GridNode::new(row, col);
+            let world_pos = to_world_coords(&node, grid_config);
+            
+            // Check if this grid cell is within the protected zone
+            if protected_zone.contains_point(&world_pos) {
+                goal_candidates.push((node, cost_map[row][col]));
+            }
+        }
+    }
+    
+    if goal_candidates.is_empty() {
+        // Fallback to center if no candidates found
+        return to_grid_coords(&protected_zone.center, grid_config);
+    }
+    
+    // Select the goal candidate with the lowest cost (safest path)
+    goal_candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    Some(goal_candidates[0].0.clone())
 }
 
 /// Get the full path for visualization purposes
@@ -261,12 +313,12 @@ pub fn calculate_intruder_full_path(
         None => return PathResult::new(vec![], 0.0, false),
     };
     
-    let goal_grid = match to_grid_coords(&world_state.protected_zone.center, grid_config) {
-        Some(pos) => pos,
+    let goal_target = match find_best_goal_target(world_state, grid_config, &cost_map) {
+        Some(target) => target,
         None => return PathResult::new(vec![], 0.0, false),
     };
     
-    astar_pathfind(&start_grid, &goal_grid, &cost_map, grid_config)
+    astar_pathfind(&start_grid, &goal_target, &cost_map, grid_config)
 }
 
 #[cfg(test)]

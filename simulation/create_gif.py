@@ -131,8 +131,15 @@ def optimize_gif_size(gif_path: str) -> None:
 
 def main():
     """Main GIF creation function"""
-    frames_dir = "animation_frames"
-    output_gif = "multiagent_defense_demo.gif"
+    # Support command line arguments for scenario generator
+    if len(sys.argv) >= 3:
+        frames_dir = sys.argv[1]
+        output_gif = sys.argv[2]
+        duration = float(sys.argv[3]) * 1000 if len(sys.argv) >= 4 else 100  # Convert to ms
+    else:
+        frames_dir = "animation_frames"
+        output_gif = "multiagent_defense_demo.gif"
+        duration = 100
     
     print("=" * 50)
     print("Creating Animated GIF for README")
@@ -169,9 +176,10 @@ def main():
     success = False
     
     if dep_name == "PIL":
-        success = create_gif_with_pil(frame_files, output_gif, duration=100)
+        success = create_gif_with_pil(frame_files, output_gif, duration=int(duration))
     elif dep_name == "imageio":
-        success = create_gif_with_imageio(frame_files, output_gif, fps=10)
+        fps = int(1000 / duration) if duration > 0 else 10
+        success = create_gif_with_imageio(frame_files, output_gif, fps=fps)
     
     if not success:
         print("Failed to create GIF")
